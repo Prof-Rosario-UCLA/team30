@@ -1,0 +1,46 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int      @id @default(autoincrement())
+  googleId    String   @unique // Google OAuth ID
+  email       String   @unique
+  name        String
+  avatar      String?  // Profile picture URL
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relationships
+  problems    Problem[]
+
+  @@map("users")
+}
+
+model Problem {
+  id          Int      @id @default(autoincrement())
+  imageData   String   // Base64 encoded image data
+  imageName   String?  // Original filename
+  mimeType    String   // Image MIME type
+  question    String?  // Student's specific question (optional)
+  aiResponse  String   // AI-generated response
+  rating      String?  // 'thumbs_up', 'thumbs_down', or null
+  subject     String?  // Problem subject/topic classification
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // User relationship
+  userId      Int?     // Make optional for backward compatibility
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@map("problems")
+}

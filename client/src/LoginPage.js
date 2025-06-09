@@ -1,5 +1,7 @@
 import React from 'react';
 import './LoginPage.css';
+import OfflineIndicator from './components/OfflineIndicator';
+import InstallButton from './components/InstallButton';
 
 function LoginPage() {
   const handleGoogleLogin = () => {
@@ -9,6 +11,9 @@ function LoginPage() {
 
   return (
     <div className="login-page">
+      <OfflineIndicator />
+      <InstallButton />
+      
       <div className="login-container">
         <div className="login-card">
           <h1>📚 Student Problem Helper</h1>

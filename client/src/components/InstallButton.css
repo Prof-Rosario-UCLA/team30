@@ -1,0 +1,181 @@
+.install-button-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  animation: slideUp 0.4s ease-out;
+}
+
+.install-prompt {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(103, 126, 234, 0.3);
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+  max-width: 320px;
+  width: max-content;
+}
+
+.install-content {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  gap: 0.75rem;
+}
+
+.install-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.install-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-text strong {
+  display: block;
+  color: #2c3e50;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.install-text p {
+  margin: 0;
+  color: #666;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
+.install-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.install-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(103, 126, 234, 0.3);
+}
+
+.install-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(103, 126, 234, 0.4);
+}
+
+.install-btn:active {
+  transform: translateY(0);
+}
+
+.install-dismiss {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.install-dismiss:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #666;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Dark theme support */
+@media (prefers-color-scheme: dark) {
+  .install-prompt {
+    background: rgba(45, 55, 72, 0.95);
+    border-color: rgba(103, 126, 234, 0.4);
+  }
+  
+  .install-text strong {
+    color: #e2e8f0;
+  }
+  
+  .install-text p {
+    color: #a0aec0;
+  }
+  
+  .install-dismiss {
+    color: #a0aec0;
+  }
+  
+  .install-dismiss:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e2e8f0;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .install-button-container {
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+  }
+  
+  .install-prompt {
+    max-width: none;
+    width: 100%;
+  }
+  
+  .install-content {
+    padding: 0.875rem;
+  }
+  
+  .install-text strong {
+    font-size: 0.85rem;
+  }
+  
+  .install-text p {
+    font-size: 0.75rem;
+  }
+  
+  .install-btn {
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* Animation for when app is being installed */
+.install-button-container.installing {
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+} 

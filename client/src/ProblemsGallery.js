@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './ProblemsGallery.css';
+import OfflineIndicator from './components/OfflineIndicator';
+import InstallButton from './components/InstallButton';
 
 function ProblemsGallery({ onBack, onAskAI }) {
   const [problems, setProblems] = useState([]);
@@ -92,6 +94,9 @@ function ProblemsGallery({ onBack, onAskAI }) {
 
   return (
     <div className="problems-gallery">
+      <OfflineIndicator />
+      <InstallButton />
+      
       <div className="gallery-header">
         <button onClick={onBack} className="back-btn">← Back to Upload</button>
         <h1>Problem Gallery</h1>

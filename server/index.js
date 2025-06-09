@@ -35,6 +35,7 @@ passport.use(new GoogleStrategy({
   callbackURL: "/auth/google/callback"
 }, async (accessToken, refreshToken, profile, done) => {
   try {
+
     // Check if user already exists
     let user = await prisma.user.findUnique({
       where: { googleId: profile.id }

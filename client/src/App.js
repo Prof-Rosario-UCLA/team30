@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import ProblemsGallery from './ProblemsGallery';
 import LoginPage from './LoginPage';
+import OfflineIndicator from './components/OfflineIndicator';
+import InstallButton from './components/InstallButton';
 import { authAPI } from './utils/auth';
+import { register as registerSW, setupInstallPrompt } from './serviceWorkerRegistration';
 import axios from 'axios';
 
 // Configure axios globally for credentials
@@ -26,7 +29,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Check authentication status on app load
+  // Check authentication status on app load and register service worker
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -41,6 +44,20 @@ function App() {
     };
 
     checkAuth();
+
+    // Register service worker for PWA functionality
+    registerSW({
+      onSuccess: (registration) => {
+        console.log('PWA: Service worker registered successfully');
+      },
+      onUpdate: (registration) => {
+        console.log('PWA: New content available, please refresh');
+        // You could show a notification here to tell users to refresh
+      }
+    });
+
+    // Setup install prompt handling
+    setupInstallPrompt();
   }, []);
 
   // Handle logout
@@ -210,6 +227,9 @@ function App() {
   // Render upload page
   return (
     <div className="app">
+      <OfflineIndicator />
+      <InstallButton />
+      
       <header className="app-header">
         <div className="header-content">
           <div className="header-text">

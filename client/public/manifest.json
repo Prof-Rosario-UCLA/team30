@@ -1,6 +1,7 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "Problem Helper",
+  "name": "Student Problem Helper - AI Tutor",
+  "description": "Upload problem screenshots and get AI-powered step-by-step help for your studies",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,6 +21,17 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#667eea",
+  "background_color": "#667eea",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "categories": ["education", "productivity", "utilities"],
+  "screenshots": [
+    {
+      "src": "screenshot1.png",
+      "type": "image/png",
+      "sizes": "1280x720"
+    }
+  ],
+  "prefer_related_applications": false
 }

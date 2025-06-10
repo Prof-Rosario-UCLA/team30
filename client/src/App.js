@@ -6,10 +6,8 @@ import OfflineIndicator from './components/OfflineIndicator';
 import InstallButton from './components/InstallButton';
 import { authAPI } from './utils/auth';
 import { register as registerSW, setupInstallPrompt } from './serviceWorkerRegistration';
-import axios from 'axios';
-
-// Configure axios globally for credentials
-axios.defaults.withCredentials = true;
+import { useCSRF } from './hooks/useCSRF';
+import { useProtectedFetch } from './hooks/useProtectedFetch';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('upload'); // 'upload', 'gallery', or 'login'
@@ -28,6 +26,10 @@ function App() {
   // Authentication state
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // CSRF protection
+  const { csrfToken, isReady: csrfReady } = useCSRF();
+  const { protectedFetch } = useProtectedFetch();
 
   // Check authentication status on app load and register service worker
   useEffect(() => {
@@ -62,12 +64,19 @@ function App() {
 
   // Handle logout
   const handleLogout = async () => {
+    if (!csrfToken) {
+      console.error('CSRF token not available for logout');
+      return;
+    }
+    
     try {
-      await authAPI.logout();
-      setUser(null);
-      setCurrentPage('login');
-      // Reset all state
-      resetForm();
+      const success = await authAPI.logout(csrfToken);
+      if (success) {
+        setUser(null);
+        setCurrentPage('login');
+        // Reset all state
+        resetForm();
+      }
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -95,6 +104,11 @@ function App() {
       return;
     }
 
+    if (!csrfReady) {
+      setError('Please wait for security setup to complete');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -116,27 +130,33 @@ function App() {
     }
     
     formData.append('question', question);
+    // Add CSRF token to form data for multipart upload
+    formData.append('_csrf', csrfToken);
 
     try {
-      const response = await axios.post('http://localhost:3001/api/analyze-problem', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        withCredentials: true
+      const response = await fetch('http://localhost:3001/api/analyze-problem', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
       });
 
-      const data = response.data;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload failed');
+      }
+
+      const data = await response.json();
       setAnalysis(data.analysis);
       setProblemId(data.problemId);
       setSubject(data.subject);
       setRating(null); // Reset rating for new problem
     } catch (err) {
-      if (err.response?.status === 401) {
+      if (err.message.includes('401') || err.message.includes('Authentication required')) {
         setUser(null);
         setCurrentPage('login');
         setError('Please log in to analyze problems');
       } else {
-        setError(err.response?.data?.error || err.message);
+        setError(err.message);
       }
     } finally {
       setLoading(false);
@@ -144,22 +164,28 @@ function App() {
   };
 
   const handleRating = async (ratingValue) => {
-    if (!problemId) return;
+    if (!problemId || !csrfReady) return;
     
     setRatingLoading(true);
     
     try {
-      const response = await axios.put(`http://localhost:3001/api/problems/${problemId}/rating`, 
-        { rating: ratingValue },
-        { withCredentials: true }
-      );
+      const response = await protectedFetch(`http://localhost:3001/api/problems/${problemId}/rating`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ rating: ratingValue })
+      });
 
-      if (response.status === 200) {
+      if (response.ok) {
         setRating(ratingValue);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Rating failed');
       }
     } catch (err) {
       console.error('Error submitting rating:', err);
-      if (err.response?.status === 401) {
+      if (err.message.includes('401') || err.message.includes('Authentication required')) {
         setUser(null);
         setCurrentPage('login');
       }
@@ -202,13 +228,13 @@ function App() {
     setCurrentPage('upload');
   };
 
-  // Show loading spinner while checking authentication
-  if (authLoading) {
+  // Show loading spinner while checking authentication or CSRF setup
+  if (authLoading || !csrfReady) {
     return (
       <div className="app">
         <div className="auth-loading">
           <div className="spinner"></div>
-          <p>Loading...</p>
+          <p>{authLoading ? 'Loading...' : 'Setting up security...'}</p>
         </div>
       </div>
     );
@@ -281,8 +307,8 @@ function App() {
                   />
                 </div>
 
-                <button type="submit" className="analyze-btn" disabled={!selectedImage || loading}>
-                  {loading ? 'Analyzing...' : 'Get Help'}
+                <button type="submit" className="analyze-btn" disabled={!selectedImage || loading || !csrfReady}>
+                  {loading ? 'Analyzing...' : !csrfReady ? 'Setting up security...' : 'Get Help'}
                 </button>
               </form>
 
@@ -350,14 +376,14 @@ function App() {
                         <button
                           className={`rating-btn thumbs-up ${rating === 'thumbs_up' ? 'selected' : ''}`}
                           onClick={() => handleRating('thumbs_up')}
-                          disabled={ratingLoading || rating}
+                          disabled={ratingLoading || rating || !csrfReady}
                         >
                           👍
                         </button>
                         <button
                           className={`rating-btn thumbs-down ${rating === 'thumbs_down' ? 'selected' : ''}`}
                           onClick={() => handleRating('thumbs_down')}
-                          disabled={ratingLoading || rating}
+                          disabled={ratingLoading || rating || !csrfReady}
                         >
                           👎
                         </button>
@@ -369,8 +395,8 @@ function App() {
                   </div>
                 ) : !error && (
                   <div className="waiting-message">
-                    <button onClick={handleSubmit} className="analyze-btn" disabled={loading}>
-                      Get Help with This Problem
+                    <button onClick={handleSubmit} className="analyze-btn" disabled={loading || !csrfReady}>
+                      {!csrfReady ? 'Setting up security...' : 'Get Help with This Problem'}
                     </button>
                   </div>
                 )}

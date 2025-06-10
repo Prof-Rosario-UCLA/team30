@@ -92,8 +92,8 @@ const purify = DOMPurify(window);
 // Initialize CSRF protection
 const csrfTokens = new csrf();
 
-// 1. Helmet - Security Headers
-app.use(helmet({
+// 1. Helmet - Security Headers (moved after session setup to avoid conflicts)
+const helmetConfig = {
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -106,7 +106,7 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false, // Disable for file uploads
-}));
+};
 
 // 2. Rate Limiting
 const generalLimiter = rateLimit({
@@ -142,11 +142,7 @@ const uploadLimiter = rateLimit({
 // Apply general rate limiting to all routes
 app.use(generalLimiter);
 
-// 3. HPP - Prevent HTTP Parameter Pollution
-app.use(hpp());
 
-// 4. MongoDB/NoSQL Injection Prevention (also works for general injection)
-app.use(mongoSanitize());
 
 // Input validation helper
 const handleValidationErrors = (req, res, next) => {
@@ -182,17 +178,24 @@ app.get('/api/csrf-token', (req, res) => {
 
 // CSRF Protection Middleware
 const csrfProtection = (req, res, next) => {
-  // Skip CSRF for GET requests and authentication routes
-  if (req.method === 'GET' || req.path.startsWith('/auth/')) {
+  // Skip CSRF for GET requests, authentication routes, and CSRF token endpoint
+  if (req.method === 'GET' || 
+      req.path.startsWith('/auth/') || 
+      req.path === '/api/csrf-token') {
     return next();
   }
   
-  const token = req.headers['x-csrf-token'];
+  // Get token from header, body, or query parameter (for multipart forms)
+  const token = req.headers['x-csrf-token'] || 
+                req.body?._csrf || 
+                req.query._csrf;
   const secret = req.session.csrfSecret;
   
   if (!token || !secret || !csrfTokens.verify(secret, token)) {
+    console.log(`CSRF validation failed for ${req.path}. Token: ${token ? 'present' : 'missing'}, Secret: ${secret ? 'present' : 'missing'}`);
     return res.status(403).json({ 
-      error: 'Invalid CSRF token' 
+      error: 'Invalid CSRF token. Please refresh the page and try again.',
+      code: 'CSRF_TOKEN_INVALID'
     });
   }
   
@@ -275,6 +278,9 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+// Apply Helmet security headers after session setup
+app.use(helmet(helmetConfig));
+
 app.use(cors({
   origin: 'http://localhost:3000',
   credentials: true // Important for sessions
@@ -282,8 +288,60 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' })); // Limit JSON payload size
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Limit URL-encoded payload
 
-// Apply CSRF protection to all non-GET routes
+// Re-enable CSRF protection to test if this causes the issue
 app.use(csrfProtection);
+
+// Custom lightweight sanitization middleware to avoid query modification conflicts
+app.use((req, res, next) => {
+  // Skip sanitization for OAuth routes (they need to handle legitimate Google parameters)
+  if (req.path.startsWith('/auth/')) {
+    return next();
+  }
+  
+  // Sanitize query parameters without modifying the original query object
+  if (req.query) {
+    for (const key in req.query) {
+      if (typeof req.query[key] === 'string') {
+        // Check for NoSQL injection patterns (but be more selective)
+        if (req.query[key].includes('$where') || req.query[key].includes('$ne') || 
+            req.query[key].includes('$gt') || req.query[key].includes('$lt') ||
+            req.query[key].includes('..')) { // Only block obvious injection patterns
+          console.log(`Potentially malicious query parameter detected: ${key}=${req.query[key]}`);
+          return res.status(400).json({ error: 'Invalid query parameter' });
+        }
+      }
+    }
+  }
+  
+  // Sanitize body parameters
+  if (req.body && typeof req.body === 'object') {
+    req.body = sanitizeObject(req.body);
+  }
+  
+  next();
+});
+
+// Helper function for deep object sanitization
+function sanitizeObject(obj) {
+  if (typeof obj !== 'object' || obj === null) {
+    return obj;
+  }
+  
+  const sanitized = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const sanitizedKey = key.replace(/[\$\.]/g, '_'); // Replace $ and . with _
+      if (typeof obj[key] === 'object') {
+        sanitized[sanitizedKey] = sanitizeObject(obj[key]);
+      } else if (typeof obj[key] === 'string') {
+        sanitized[sanitizedKey] = sanitizeInput(obj[key]);
+      } else {
+        sanitized[sanitizedKey] = obj[key];
+      }
+    }
+  }
+  return sanitized;
+}
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
@@ -873,7 +931,7 @@ app.use((err, req, res, next) => {
 });
 
 // Handle 404 errors
-app.use('*', (req, res) => {
+app.use((req, res) => {
   res.status(404).json({ 
     error: 'Endpoint not found' 
   });

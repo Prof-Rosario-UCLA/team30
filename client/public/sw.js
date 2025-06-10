@@ -24,6 +24,10 @@ const NEVER_CACHE_PATTERNS = [
   /\/auth\//,
   /\/sockjs-node/,
   /hot-update/,
+  /chrome-extension/,
+  /moz-extension/,
+  /ms-browser-extension/,
+  /safari-extension/,
 ];
 
 // Install event - cache static assets
@@ -76,6 +80,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
+  // Skip unsupported URL schemes (chrome-extension, moz-extension, etc.)
+  if (!url.protocol.startsWith('http')) {
+    return;
+  }
+  
   // Skip requests that should never be cached
   if (NEVER_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname))) {
     return;
@@ -121,7 +130,7 @@ async function handleNavigationRequest(request) {
     const networkResponse = await fetch(request);
     
     // Cache successful responses
-    if (networkResponse.ok) {
+    if (networkResponse.ok && isCacheable(request)) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
@@ -148,7 +157,7 @@ async function handleStaticAsset(request) {
   
   try {
     const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
+    if (networkResponse.ok && isCacheable(request)) {
       const cache = await caches.open(STATIC_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
@@ -169,7 +178,7 @@ async function handleAPIRequest(request) {
   try {
     const networkResponse = await fetch(request);
     
-    if (networkResponse.ok && shouldCache) {
+    if (networkResponse.ok && shouldCache && isCacheable(request)) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
@@ -193,7 +202,7 @@ async function handleExternalRequest(request) {
   try {
     const networkResponse = await fetch(request);
     
-    if (networkResponse.ok) {
+    if (networkResponse.ok && isCacheable(request)) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
@@ -214,7 +223,7 @@ async function handleNetworkFirst(request) {
   try {
     const networkResponse = await fetch(request);
     
-    if (networkResponse.ok) {
+    if (networkResponse.ok && isCacheable(request)) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
@@ -227,6 +236,36 @@ async function handleNetworkFirst(request) {
     }
     
     throw error;
+  }
+}
+
+// Helper: Check if request can be cached
+function isCacheable(request) {
+  try {
+    const url = new URL(request.url);
+    
+    // Only cache HTTP/HTTPS requests
+    if (!url.protocol.startsWith('http')) {
+      return false;
+    }
+    
+    // Don't cache if URL has unsupported schemes
+    if (url.protocol === 'chrome-extension:' || 
+        url.protocol === 'moz-extension:' || 
+        url.protocol === 'ms-browser-extension:' ||
+        url.protocol === 'safari-extension:') {
+      return false;
+    }
+    
+    // Don't cache blob or data URLs
+    if (url.protocol === 'blob:' || url.protocol === 'data:') {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.warn('Service Worker: Error checking if request is cacheable:', error);
+    return false;
   }
 }
 

@@ -142,9 +142,36 @@ const uploadLimiter = rateLimit({
 // Apply general rate limiting to all routes
 app.use(generalLimiter);
 
+// ---------------------------------------------------------------------------
+// CORS — needs to run before any route so that even early routes (e.g. CSRF)
+// send the appropriate Access-Control headers.
+// ---------------------------------------------------------------------------
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true
+}));
 
+// ---------------------------------------------------------------------------
+// SESSION — needs to be registered before any route that accesses req.session
+// ---------------------------------------------------------------------------
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'fallback-secret-key-change-in-production',
+  name: 'sessionId',
+  resave: false,
+  saveUninitialized: true, // Allow sessions to be created for anonymous users
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax' // More permissive in development
+  }
+}));
 
-// Input validation helper
+// ---------------------------------------------------------------------------
+// Utility & security helpers that rely on sessions being present
+// ---------------------------------------------------------------------------
+
+// Input validation helper (used in multiple routes)
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -156,65 +183,127 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
-// XSS Protection Helper
+// Simple XSS sanitiser based on DOMPurify (used elsewhere in file)
 const sanitizeInput = (input) => {
   if (typeof input !== 'string') return input;
-  return purify.sanitize(input, { 
-    ALLOWED_TAGS: [], 
-    ALLOWED_ATTR: [] 
+  return purify.sanitize(input, {
+    ALLOWED_TAGS: [],
+    ALLOWED_ATTR: []
   });
 };
 
-// CSRF Token generation endpoint
+// CSRF token generator route — returns a token and stores its secret in the session
 app.get('/api/csrf-token', (req, res) => {
+  // Ensure session exists
+  if (!req.session) {
+    console.log('ERROR: No session available for CSRF token generation');
+    return res.status(500).json({ error: 'Session not available' });
+  }
+
+  // If we already have a secret and token for this session, reuse them
+  if (req.session.csrfSecret && req.session.csrfToken) {
+    console.log('CSRF Token Reused:', { 
+      sessionId: req.sessionID,
+      tokenLength: req.session.csrfToken.length
+    });
+    return res.json({ csrfToken: req.session.csrfToken });
+  }
+
+  // Generate new token only if we don't have one
   const secret = csrfTokens.secretSync();
   const token = csrfTokens.create(secret);
-  
-  // Store secret in session
+
   req.session.csrfSecret = secret;
+  req.session.csrfToken = token; // Store the token too
   
-  res.json({ csrfToken: token });
+  console.log('CSRF Token Generated (new):', { 
+    sessionId: req.sessionID, 
+    tokenLength: token.length
+  });
+
+  // Explicitly save session to ensure the secret is persisted
+  req.session.save((err) => {
+    if (err) {
+      console.log('Session save error:', err);
+      return res.status(500).json({ error: 'Failed to save session' });
+    }
+    res.json({ csrfToken: token });
+  });
 });
 
-// CSRF Protection Middleware
+// Custom lightweight CSRF protection middleware
 const csrfProtection = (req, res, next) => {
-  // Skip CSRF for GET requests, authentication routes, and CSRF token endpoint
-  if (req.method === 'GET' || 
-      req.path.startsWith('/auth/') || 
+  // Skip CSRF for safe methods and for endpoints explicitly exempted
+  if (req.method === 'GET' ||
+      req.path.startsWith('/auth/') ||
       req.path === '/api/csrf-token') {
     return next();
   }
-  
-  // Get token from header, body, or query parameter (for multipart forms)
-  const token = req.headers['x-csrf-token'] || 
-                req.body?._csrf || 
-                req.query._csrf;
+
+  const token = req.headers['x-csrf-token'] || (req.body && req.body._csrf) || req.query._csrf;
   const secret = req.session.csrfSecret;
-  
+
   if (!token || !secret || !csrfTokens.verify(secret, token)) {
-    console.log(`CSRF validation failed for ${req.path}. Token: ${token ? 'present' : 'missing'}, Secret: ${secret ? 'present' : 'missing'}`);
-    return res.status(403).json({ 
+    console.log(`CSRF validation failed for ${req.path}. Token present: ${!!token}, Secret present: ${!!secret}`);
+    return res.status(403).json({
       error: 'Invalid CSRF token. Please refresh the page and try again.',
       code: 'CSRF_TOKEN_INVALID'
     });
   }
-  
+
   next();
 };
 
-// Session configuration with enhanced security
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'fallback-secret-key-change-in-production',
-  name: 'sessionId', // Don't use default session name
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production', // HTTPS in production
-    httpOnly: true, // Prevent XSS attacks via document.cookie
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: 'strict' // CSRF protection
+// Specialized CSRF protection for multipart forms (after multer parsing)
+const csrfProtectionMultipart = (req, res, next) => {
+  // Check if session exists
+  if (!req.session) {
+    console.log('ERROR: No session available during CSRF validation');
+    return res.status(500).json({ error: 'Session not available' });
   }
-}));
+
+  const token = req.headers['x-csrf-token'] || (req.body && req.body._csrf) || req.query._csrf;
+  const secret = req.session.csrfSecret;
+
+  console.log('CSRF Multipart Validation:', {
+    sessionId: req.sessionID,
+    sessionExists: !!req.session,
+    tokenPresent: !!token,
+    secretPresent: !!secret,
+    tokenLength: token ? token.length : 0,
+    secretLength: secret ? secret.length : 0,
+    tokenSource: req.headers['x-csrf-token'] ? 'header' : (req.body && req.body._csrf) ? 'body' : req.query._csrf ? 'query' : 'none',
+    tokenValue: token ? token.substring(0, 8) + '...' : 'none',
+    secretValue: secret ? secret.substring(0, 8) + '...' : 'none',
+    allSessionKeys: req.session ? Object.keys(req.session) : []
+  });
+
+  // Test verification with more details
+  if (token && secret) {
+    try {
+      const isValid = csrfTokens.verify(secret, token);
+      console.log('CSRF Verification Details:', {
+        isValid,
+        secretType: typeof secret,
+        tokenType: typeof token,
+        secretIsString: typeof secret === 'string',
+        tokenIsString: typeof token === 'string'
+      });
+    } catch (verifyError) {
+      console.log('CSRF Verification Error:', verifyError.message);
+    }
+  }
+
+  if (!token || !secret || !csrfTokens.verify(secret, token)) {
+    console.log(`CSRF validation failed for multipart ${req.path}. Token present: ${!!token}, Secret present: ${!!secret}`);
+    return res.status(403).json({
+      error: 'Invalid CSRF token. Please refresh the page and try again.',
+      code: 'CSRF_TOKEN_INVALID'
+    });
+  }
+
+  next();
+};
 
 // Passport configuration
 app.use(passport.initialize());
@@ -281,15 +370,11 @@ passport.deserializeUser(async (id, done) => {
 // Apply Helmet security headers after session setup
 app.use(helmet(helmetConfig));
 
-app.use(cors({
-  origin: 'http://localhost:3000',
-  credentials: true // Important for sessions
-}));
 app.use(express.json({ limit: '10mb' })); // Limit JSON payload size
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Limit URL-encoded payload
 
-// Re-enable CSRF protection to test if this causes the issue
-app.use(csrfProtection);
+// CSRF protection is now applied per-route instead of globally
+// to handle multipart forms correctly
 
 // Custom lightweight sanitization middleware to avoid query modification conflicts
 app.use((req, res, next) => {
@@ -366,7 +451,7 @@ app.get('/auth/google/callback',
   }
 );
 
-app.post('/auth/logout', (req, res) => {
+app.post('/auth/logout', csrfProtection, (req, res) => {
   req.logout((err) => {
     if (err) {
       return res.status(500).json({ error: 'Failed to logout' });
@@ -508,6 +593,7 @@ app.post('/api/analyze-problem',
   uploadLimiter,
   requireAuth, 
   upload.single('image'),
+  csrfProtectionMultipart, // CSRF check after multer has parsed the form
   [
     body('question')
       .optional()
@@ -720,6 +806,7 @@ app.get('/api/problems/:id',
 // Updated endpoint to update problem rating - now requires authentication and ownership with validation
 app.put('/api/problems/:id/rating', 
   requireAuth,
+  csrfProtection,
   [
     param('id')
       .isInt({ min: 1 })
@@ -783,7 +870,7 @@ app.put('/api/problems/:id/rating',
 });
 
 // New endpoint to classify unclassified problems
-app.post('/api/classify-problems', async (req, res) => {
+app.post('/api/classify-problems', csrfProtection, async (req, res) => {
   try {
     // Find problems without subjects
     const unclassifiedProblems = await prisma.problem.findMany({
@@ -872,7 +959,7 @@ app.get('/api/cache/stats', (req, res) => {
 });
 
 // Clear cache endpoint for testing
-app.post('/api/cache/clear', (req, res) => {
+app.post('/api/cache/clear', csrfProtection, (req, res) => {
   problemCache.clear();
   res.json({ message: 'Cache cleared successfully' });
 });

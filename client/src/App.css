@@ -4,6 +4,33 @@
   box-sizing: border-box;
 }
 
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus indicators for better keyboard navigation */
+*:focus {
+  outline: 3px solid #4A90E2;
+  outline-offset: 2px;
+}
+
+/* Custom focus for buttons */
+button:focus,
+.file-input-wrapper:focus {
+  outline: 3px solid #4A90E2;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px white, 0 0 0 5px #4A90E2;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -176,6 +203,27 @@ body {
 
 .file-input-wrapper {
   margin-bottom: 2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.file-input-wrapper:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Drag & Drop styles */
+.file-input-wrapper.drag-over {
+  border: 2px dashed #667eea;
+  border-radius: 20px;
+  padding: 2rem;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.file-input-wrapper.drag-over .file-input-label {
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+  box-shadow: none;
 }
 
 .file-input {
@@ -523,13 +571,54 @@ body {
 }
 
 .error-message {
-  background: #fee;
-  color: #c33;
+  color: #721c24;
+  background: #f8d7da;
+  border: 2px solid #f5c6cb;
   padding: 1rem;
-  border-radius: 10px;
-  text-align: center;
+  border-radius: 8px;
   margin-top: 1rem;
-  flex-shrink: 0;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .error-message {
+    color: #000;
+    background: #ffdddd;
+    border: 3px solid #cc0000;
+  }
+  
+  .analyze-btn, .gallery-btn {
+    border: 2px solid #000;
+  }
+  
+  .file-input-label {
+    border: 2px solid #000;
+  }
+}
+
+/* Reduced motion support for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .spinner {
+    animation: none;
+  }
+  
+  .file-input-wrapper:hover,
+  .analyze-btn:hover:not(:disabled),
+  .gallery-btn:hover,
+  .reset-btn:hover {
+    transform: none;
+  }
 }
 
 /* Responsive Design */

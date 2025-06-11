@@ -22,6 +22,8 @@ function App() {
   const [ratingLoading, setRatingLoading] = useState(false);
   const [subject, setSubject] = useState(null);
   const [preloadedProblem, setPreloadedProblem] = useState(null);
+  // Drag & Drop state
+  const [isDragOver, setIsDragOver] = useState(false);
   
   // Authentication state
   const [user, setUser] = useState(null);
@@ -48,15 +50,12 @@ function App() {
     checkAuth();
 
     // Register service worker for PWA functionality
-    registerSW({
-      onSuccess: (registration) => {
-        console.log('PWA: Service worker registered successfully');
-      },
-      onUpdate: (registration) => {
-        console.log('PWA: New content available, please refresh');
-        // You could show a notification here to tell users to refresh
-      }
-    });
+    if (process.env.NODE_ENV === 'production') {
+      registerSW({
+        onSuccess: () => console.log('PWA: registered'),
+        onUpdate: () => console.log('PWA: update available')
+      });
+    }
 
     // Setup install prompt handling
     setupInstallPrompt();
@@ -82,17 +81,55 @@ function App() {
     }
   };
 
+  // Helper to process a selected or dropped file
+  const processFile = (file) => {
+    if (!file) return;
+    setSelectedImage(file);
+    setImagePreview(URL.createObjectURL(file));
+    setAnalysis(''); // Clear previous analysis
+    setError('');
+    setProblemId(null); // Clear previous problem ID
+    setRating(null); // Clear previous rating
+    setSubject(null); // Clear previous subject
+    setPreloadedProblem(null); // Clear any preloaded problem
+  };
+
   const handleImageSelect = (event) => {
     const file = event.target.files[0];
-    if (file) {
-      setSelectedImage(file);
-      setImagePreview(URL.createObjectURL(file));
-      setAnalysis(''); // Clear previous analysis
-      setError('');
-      setProblemId(null); // Clear previous problem ID
-      setRating(null); // Clear previous rating
-      setSubject(null); // Clear previous subject
-      setPreloadedProblem(null); // Clear any preloaded problem
+    processFile(file);
+  };
+
+  // Drag & Drop handlers
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    // Validate file type for accessibility
+    if (file && !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      setError('Please select a valid image file (JPEG, PNG, GIF, or WebP)');
+      return;
+    }
+    processFile(file);
+  };
+
+  // Keyboard support for drag & drop zone
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      document.getElementById('image-upload').click();
     }
   };
 
@@ -262,38 +299,55 @@ function App() {
             <h1>📚 Student Problem Helper</h1>
             <p>Upload a screenshot of your problem and get step-by-step help!</p>
           </div>
-          <div className="header-actions">
+          <nav className="header-actions" aria-label="Main navigation">
             <div className="user-info">
-              {user.avatar && <img src={user.avatar} alt="Profile" className="user-avatar" />}
+              {user.avatar && <img src={user.avatar} alt={`${user.name}'s profile picture`} className="user-avatar" />}
               <span className="user-name">{user.name}</span>
             </div>
             <button onClick={goToGallery} className="gallery-btn">
-              🖼️ View Gallery
+              <span aria-hidden="true">🖼️</span>
+              <span>View Gallery</span>
             </button>
             <button onClick={handleLogout} className="logout-btn">
               Sign Out
             </button>
-          </div>
+          </nav>
         </div>
       </header>
 
       <main className="main-content">
         {!imagePreview ? (
-          <div className="upload-section">
+          <section className="upload-section" aria-labelledby="upload-heading">
             <div className="upload-card">
-              <h2>Upload Your Problem</h2>
+              <h2 id="upload-heading">Upload Your Problem</h2>
               <form onSubmit={handleSubmit}>
-                <div className="file-input-wrapper">
+                <div
+                  className={`file-input-wrapper ${isDragOver ? 'drag-over' : ''}`}
+                  onDragOver={handleDragOver}
+                  onDragEnter={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onKeyDown={handleKeyDown}
+                  tabIndex="0"
+                  role="button"
+                  aria-label="Click to select an image file or drag and drop an image here"
+                  aria-describedby="file-upload-instructions"
+                >
                   <input
                     type="file"
                     id="image-upload"
                     accept="image/*"
                     onChange={handleImageSelect}
                     className="file-input"
+                    aria-describedby="file-upload-instructions"
                   />
                   <label htmlFor="image-upload" className="file-input-label">
-                    📷 Choose Image
+                    <span aria-hidden="true">📷</span>
+                    <span>Choose or Drag & Drop Image</span>
                   </label>
+                  <div id="file-upload-instructions" className="sr-only">
+                    Accepted file types: JPEG, PNG, GIF, WebP. Maximum file size: 5MB.
+                  </div>
                 </div>
                 
                 <div className="question-input">
@@ -304,7 +358,11 @@ function App() {
                     onChange={(e) => setQuestion(e.target.value)}
                     placeholder="What specifically would you like help with? (e.g., 'I don't understand step 3' or 'How do I approach this type of problem?')"
                     rows="3"
+                    aria-describedby="question-help"
                   />
+                  <div id="question-help" className="sr-only">
+                    Optional: Provide specific details about what you need help with
+                  </div>
                 </div>
 
                 <button type="submit" className="analyze-btn" disabled={!selectedImage || loading || !csrfReady}>
@@ -312,15 +370,20 @@ function App() {
                 </button>
               </form>
 
-              {error && <div className="error-message">{error}</div>}
+              {error && (
+                <div className="error-message" role="alert" aria-live="polite">
+                  <span className="sr-only">Error: </span>
+                  {error}
+                </div>
+              )}
             </div>
-          </div>
+          </section>
         ) : (
-          <div className="analysis-section">
+          <section className="analysis-section" aria-labelledby="analysis-heading">
             <div className="content-grid">
-              <div className="image-panel">
-                <h3>Your Problem</h3>
-                <img src={imagePreview} alt="Uploaded problem" className="problem-image" />
+              <article className="image-panel">
+                <h3 id="analysis-heading">Your Problem</h3>
+                <img src={imagePreview} alt="Student's uploaded problem for analysis" className="problem-image" />
                 
                 {/* Show question input when image is loaded but analysis hasn't started */}
                 {!analysis && !loading && (
@@ -332,64 +395,78 @@ function App() {
                       onChange={(e) => setQuestion(e.target.value)}
                       placeholder="What specifically would you like help with? (e.g., 'I don't understand step 3' or 'How do I approach this type of problem?')"
                       rows="3"
+                      aria-describedby="question-after-help"
                     />
+                    <div id="question-after-help" className="sr-only">
+                      Optional: Add or modify your question before getting AI help
+                    </div>
                   </div>
                 )}
                 
                 {question && (
-                  <div className="student-question">
+                  <div className="student-question" role="region" aria-labelledby="student-question-heading">
+                    <h4 id="student-question-heading" className="sr-only">Student's Question</h4>
                     <strong>Your question:</strong> {question}
                   </div>
                 )}
                 {subject && (
-                  <div className="subject-classification">
+                  <div className="subject-classification" role="region" aria-labelledby="subject-heading">
+                    <h4 id="subject-heading" className="sr-only">Subject Classification</h4>
                     <strong>Subject:</strong> {subject}
                   </div>
                 )}
                 {problemId && (
-                  <div className="problem-saved">
+                  <div className="problem-saved" role="status" aria-live="polite">
                     <strong>✅ Saved to database!</strong>
                     <br />
                     <small>Problem ID: #{problemId}</small>
                   </div>
                 )}
                 <button onClick={resetForm} className="reset-btn">
-                  📷 Upload New Problem
+                  <span aria-hidden="true">📷</span>
+                  <span>Upload New Problem</span>
                 </button>
-              </div>
+              </article>
 
-              <div className="analysis-panel">
-                <h3>AI Tutor Response</h3>
+              <article className="analysis-panel">
+                <h3 id="ai-response-heading">AI Tutor Response</h3>
                 {loading ? (
-                  <div className="loading">
+                  <div className="loading" role="status" aria-live="polite" aria-label="Analyzing your problem">
                     <div className="spinner"></div>
                     <p>Analyzing your problem...</p>
                   </div>
                 ) : analysis ? (
                   <div className="analysis-content-wrapper">
-                    <div className="analysis-content">
+                    <div className="analysis-content" role="region" aria-labelledby="ai-response-heading">
                       <pre className="analysis-text">{analysis}</pre>
                     </div>
-                    <div className="rating-section">
+                    <div className="rating-section" role="region" aria-labelledby="rating-heading">
+                      <h4 id="rating-heading" className="sr-only">Rate this response</h4>
                       <p className="rating-question">Was this response helpful?</p>
                       <div className="rating-buttons">
                         <button
                           className={`rating-btn thumbs-up ${rating === 'thumbs_up' ? 'selected' : ''}`}
                           onClick={() => handleRating('thumbs_up')}
                           disabled={ratingLoading || rating || !csrfReady}
+                          aria-label="Rate response as helpful"
+                          aria-pressed={rating === 'thumbs_up'}
                         >
-                          👍
+                          <span aria-hidden="true">👍</span>
+                          <span className="sr-only">Helpful</span>
                         </button>
                         <button
                           className={`rating-btn thumbs-down ${rating === 'thumbs_down' ? 'selected' : ''}`}
                           onClick={() => handleRating('thumbs_down')}
                           disabled={ratingLoading || rating || !csrfReady}
+                          aria-label="Rate response as not helpful"
+                          aria-pressed={rating === 'thumbs_down'}
                         >
-                          👎
+                          <span aria-hidden="true">👎</span>
+                          <span className="sr-only">Not helpful</span>
                         </button>
                       </div>
                       {rating && (
-                        <p className="rating-thanks">Thank you for your feedback!</p>
+                        <p className="rating-thanks" role="status" aria-live="polite">Thank you for your feedback!</p>
                       )}
                     </div>
                   </div>
@@ -401,10 +478,15 @@ function App() {
                   </div>
                 )}
                 
-                {error && <div className="error-message">{error}</div>}
-              </div>
+                {error && (
+                  <div className="error-message" role="alert" aria-live="assertive">
+                    <span className="sr-only">Error: </span>
+                    {error}
+                  </div>
+                )}
+              </article>
             </div>
-          </div>
+          </section>
         )}
       </main>
     </div>

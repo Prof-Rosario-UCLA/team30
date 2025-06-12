@@ -5,6 +5,7 @@ import LoginPage from './LoginPage';
 import OfflineIndicator from './components/OfflineIndicator';
 import InstallButton from './components/InstallButton';
 import { authAPI } from './utils/auth';
+import { API_BASE_URL } from './utils/api';
 import { register as registerSW, setupInstallPrompt } from './serviceWorkerRegistration';
 import { useCSRF } from './hooks/useCSRF';
 import { useProtectedFetch } from './hooks/useProtectedFetch';
@@ -171,7 +172,7 @@ function App() {
     formData.append('_csrf', csrfToken);
 
     try {
-      const response = await fetch('http://localhost:3001/api/analyze-problem', {
+      const response = await fetch(`${API_BASE_URL}/api/analyze-problem`, {
         method: 'POST',
         body: formData,
         credentials: 'include'
@@ -206,7 +207,7 @@ function App() {
     setRatingLoading(true);
     
     try {
-      const response = await protectedFetch(`http://localhost:3001/api/problems/${problemId}/rating`, {
+      const response = await protectedFetch(`${API_BASE_URL}/api/problems/${problemId}/rating`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -1,0 +1,26 @@
+runtime: nodejs20
+
+env_variables:
+  NODE_ENV: production
+  PORT: 8080
+  CLIENT_URL: https://finalproject-462406.uc.r.appspot.com
+  DATABASE_URL: postgresql://postgres:eduhelperpass@localhost/eduhelperdb?host=/cloudsql/finalproject-462406:us-central1:eduhelperdb
+  GEMINI_API_KEY: AIzaSyA0VDLecnUzqK_xYQi-Zu94ProrvQEMwAg
+  GOOGLE_CLIENT_ID: 148267210478-cg0q7a2qeqk08jhlsghiob7ac6u1jd29.apps.googleusercontent.com
+  GOOGLE_CLIENT_SECRET: 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
+  SESSION_SECRET: cs144projecteduhelpniofqwnonoivddfijzd
+
+beta_settings:
+  cloud_sql_instances: finalproject-462406:us-central1:eduhelperdb
+
+automatic_scaling:
+  min_instances: 0
+  max_instances: 10
+  target_cpu_utilization: 0.6
+
+resources:
+  cpu: 1
+  memory_gb: 0.5
+  disk_size_gb: 10
+
+entrypoint: npm start

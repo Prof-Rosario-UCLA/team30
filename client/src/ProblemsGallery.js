@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './ProblemsGallery.css';
 import OfflineIndicator from './components/OfflineIndicator';
 import InstallButton from './components/InstallButton';
+import { API_BASE_URL } from './utils/api';
 
 function ProblemsGallery({ onBack, onAskAI }) {
   const [problems, setProblems] = useState([]);
@@ -27,7 +28,7 @@ function ProblemsGallery({ onBack, onAskAI }) {
 
   const fetchProblems = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/problems');
+      const response = await fetch(`${API_BASE_URL}/api/problems`);
       if (!response.ok) {
         throw new Error('Failed to fetch problems');
       }
@@ -42,7 +43,7 @@ function ProblemsGallery({ onBack, onAskAI }) {
 
   const fetchSubjects = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/subjects');
+      const response = await fetch(`${API_BASE_URL}/api/subjects`);
       if (response.ok) {
         const data = await response.json();
         setSubjects(['All', ...data.subjects]);

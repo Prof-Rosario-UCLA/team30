@@ -2,11 +2,12 @@ import React from 'react';
 import './LoginPage.css';
 import OfflineIndicator from './components/OfflineIndicator';
 import InstallButton from './components/InstallButton';
+import { API_BASE_URL } from './utils/api';
 
 function LoginPage() {
   const handleGoogleLogin = () => {
     // Redirect to backend Google OAuth route
-    window.location.href = 'http://localhost:3001/auth/google';
+    window.location.href = `${API_BASE_URL}/auth/google`;
   };
 
   return (

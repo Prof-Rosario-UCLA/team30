@@ -2,11 +2,14 @@
   "name": "final_proj",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server/index.js",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "cd server && DATABASE_URL=\"file:./problem_bank.db\" npm start",
+    "server": "cd server && npm start",
     "client": "cd client && npm start",
+    "build": "cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate",
+    "start": "npm run prod",
+    "prod": "node server/index.js",
+    "postinstall": "npm --prefix server install && npm --prefix client install && npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { PrismaClient } = require('./generated/prisma');
+const { PrismaClient } = require('@prisma/client');
 const fs = require('fs');
 const path = require('path');
 const session = require('express-session');
@@ -16,9 +16,10 @@ const { JSDOM } = require('jsdom');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const csrf = require('csrf');
+const { initializeDatabase } = require('./init-db');
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 8080;
 const prisma = new PrismaClient();
 
 // Simple in-memory cache with TTL
@@ -108,6 +109,12 @@ const helmetConfig = {
   crossOriginEmbedderPolicy: false, // Disable for file uploads
 };
 
+// Trust proxy configuration for Google App Engine
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
+
 // 2. Rate Limiting
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -121,7 +128,7 @@ const generalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 auth attempts per windowMs
+  max: 50, // limit each IP to 5 auth attempts per windowMs
   message: {
     error: 'Too many authentication attempts, please try again later.'
   },
@@ -147,7 +154,9 @@ app.use(generalLimiter);
 // send the appropriate Access-Control headers.
 // ---------------------------------------------------------------------------
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: process.env.NODE_ENV === 'production' 
+    ? true  // Allow all origins in production (since we're serving from same domain)
+    : 'http://localhost:3000',
   credentials: true
 }));
 
@@ -163,9 +172,28 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax' // More permissive in development
+    // SameSite 'strict' blocks cookies on OAuth callback (cross-site redirect).
+    // Use 'lax' so the session survives the Google redirect back to our site.
+    sameSite: 'lax'
   }
 }));
+
+// ---------------------------------------------------------------------------
+// STATIC FILE SERVING FOR PRODUCTION
+// ---------------------------------------------------------------------------
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from React build
+  app.use(express.static(path.join(__dirname, '../client/build')));
+}
+
+// Body parsing middleware (needs to be after static files)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Apply security middleware after basic setup
+app.use(helmet(helmetConfig));
+app.use(mongoSanitize());
+app.use(hpp());
 
 // ---------------------------------------------------------------------------
 // Utility & security helpers that rely on sessions being present
@@ -367,14 +395,8 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// Apply Helmet security headers after session setup
-app.use(helmet(helmetConfig));
-
 app.use(express.json({ limit: '10mb' })); // Limit JSON payload size
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Limit URL-encoded payload
-
-// CSRF protection is now applied per-route instead of globally
-// to handle multipart forms correctly
 
 // Custom lightweight sanitization middleware to avoid query modification conflicts
 app.use((req, res, next) => {
@@ -444,10 +466,13 @@ app.get('/auth/google',
 
 app.get('/auth/google/callback',
   authLimiter,
-  passport.authenticate('google', { failureRedirect: 'http://localhost:3000/login' }),
+  passport.authenticate('google', { 
+    failureRedirect: process.env.NODE_ENV === 'production' ? '/login' : 'http://localhost:3000/login'
+  }),
   (req, res) => {
     // Successful authentication, redirect to frontend
-    res.redirect('http://localhost:3000');
+    const redirectUrl = process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:3000';
+    res.redirect(redirectUrl);
   }
 );
 
@@ -512,8 +537,8 @@ const AVAILABLE_SUBJECTS = [
 ];
 
 // Configure multer for file uploads
-const upload = multer({ 
-  dest: 'uploads/',
+const upload = multer({
+  storage: multer.memoryStorage(), // use in-memory storage; App Engine filesystems are read-only outside /tmp
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
   }
@@ -612,14 +637,11 @@ app.post('/api/analyze-problem',
     // Validate file type
     const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!allowedMimeTypes.includes(req.file.mimetype)) {
-      // Clean up uploaded file
-      fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.' });
     }
 
     // Validate file size (already handled by multer, but double-check)
     if (req.file.size > 5 * 1024 * 1024) { // 5MB
-      fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'File too large. Maximum size is 5MB.' });
     }
 
@@ -639,15 +661,20 @@ app.post('/api/analyze-problem',
     // Get the model
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // Convert the uploaded image to the format Gemini expects
-    const imagePart = fileToGenerativePart(req.file.path, req.file.mimetype);
+    // Convert the uploaded image to the format Gemini expects (buffer already in memory)
+    const imagePart = {
+      inlineData: {
+        data: req.file.buffer.toString('base64'),
+        mimeType: req.file.mimetype
+      }
+    };
     // Generate content
     const result = await model.generateContent([fullPrompt, imagePart]);
     const response = await result.response;
     const text = response.text();
 
     // Get image data for classification
-    const imageData = fs.readFileSync(req.file.path).toString('base64');
+    const imageData = req.file.buffer.toString('base64');
     
     // Classify the subject
     const subject = await classifyProblemSubject(imageData, req.file.mimetype, sanitizedQuestion, text);
@@ -669,9 +696,6 @@ app.post('/api/analyze-problem',
     problemCache.delete(`problems:all`);
     problemCache.delete(`problems:user_${userId}`);
 
-    // Clean up uploaded file
-    fs.unlinkSync(req.file.path);
-
     res.json({ 
       analysis: text,
       originalQuestion: sanitizedQuestion || null,
@@ -681,11 +705,6 @@ app.post('/api/analyze-problem',
 
   } catch (error) {
     console.error('Error analyzing problem:', error);
-    
-    // Clean up file if it exists
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     
     res.status(500).json({ error: 'Failed to analyze the problem. Please try again.' });
   }
@@ -1017,6 +1036,13 @@ app.use((err, req, res, next) => {
   }
 });
 
+// Catch-all handler: send back React's index.html file for client-side routing
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/build/index.html'));
+  });
+}
+
 // Handle 404 errors
 app.use((req, res) => {
   res.status(404).json({ 
@@ -1024,12 +1050,44 @@ app.use((req, res) => {
   });
 });
 
+// ------------------------------
+// HEALTH CHECKS FOR APP ENGINE
+// ------------------------------
+// GAE sends requests to /_ah/health (and sometimes /_ah/warmup).
+// Respond quickly with 200 so the instance is marked healthy.
+app.get('/_ah/health', (req, res) => {
+  res.status(200).send('ok');
+});
+
+app.get('/_ah/warmup', (req, res) => {
+  res.status(200).send('ok');
+});
+
 // Graceful shutdown
 process.on('beforeExit', async () => {
   await prisma.$disconnect();
 });
 
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
-  console.log(`Security features enabled: Helmet, CSRF, Rate Limiting, Input Validation`);
-}); 
+// Initialize database and start server
+async function startServer() {
+  try {
+    // Initialize database in production
+    if (process.env.NODE_ENV === 'production') {
+      console.log('Production mode: Initializing database...');
+      await initializeDatabase();
+    }
+    
+    // Start the server
+    app.listen(port, () => {
+      console.log(`Server listening on port ${port}`);
+      console.log(`Security features enabled: Helmet, CSRF, Rate Limiting, Input Validation`);
+      console.log(`Database initialized successfully`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer(); 

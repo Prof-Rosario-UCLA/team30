@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
 export const useCSRF = () => {
   const [csrfToken, setCsrfToken] = useState(null);
@@ -10,7 +11,7 @@ export const useCSRF = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('http://localhost:3001/api/csrf-token', {
+      const response = await fetch(`${API_BASE_URL}/api/csrf-token`, {
         credentials: 'include'
       });
       

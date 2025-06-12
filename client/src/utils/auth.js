@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:3001';
+import { API_BASE_URL } from './api';
 
 export const authAPI = {
   // Get current user info

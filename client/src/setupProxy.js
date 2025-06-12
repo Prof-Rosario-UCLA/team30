@@ -1,10 +1,11 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const { API_BASE_URL } = require('./utils/api');
 
 module.exports = function(app) {
   app.use(
     '/api',
     createProxyMiddleware({
-      target: 'http://localhost:3001',
+      target: API_BASE_URL,
       changeOrigin: true,
       secure: false,
       logLevel: 'debug'

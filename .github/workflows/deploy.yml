@@ -44,40 +44,32 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - id: auth
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    # Install the gcloud SDK (already authenticated by the step above)
+    - name: Setup Google Cloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: '${{ secrets.GCP_PROJECT_ID }}'
+
+    # Node & build steps
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
-    
-    - name: Install dependencies
+
+    - name: Install dependencies & build
       run: |
-        npm install
-        cd server && npm install
-        cd ../client && npm install
-    
-    - name: Build client for production
-      run: cd client && npm run build
-    
-    - name: Generate Prisma client
-      run: cd server && npx prisma generate
-    
-    - name: Setup Google Cloud CLI
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        export_default_credentials: true
-    
+        npm ci
+        npm --prefix server ci
+        npm --prefix client ci
+        npm run build        # builds React into client/build
+        npx prisma generate --schema=server/prisma/schema.prisma
+
     - name: Deploy to App Engine
       run: |
-        # Copy client build to server directory for deployment
-        cp -r client/build server/client-build
-        
-        # Deploy to App Engine
-        gcloud app deploy app.yaml --quiet --promote --stop-previous-version
-    
-    - name: Cleanup
-      run: |
-        # Remove the copied build files
-        rm -rf server/client-build 
+        gcloud app deploy app.yaml --quiet --promote --stop-previous-version 

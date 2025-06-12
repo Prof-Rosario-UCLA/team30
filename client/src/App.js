@@ -4,6 +4,7 @@ import ProblemsGallery from './ProblemsGallery';
 import LoginPage from './LoginPage';
 import OfflineIndicator from './components/OfflineIndicator';
 import InstallButton from './components/InstallButton';
+import CookieBanner from './components/CookieBanner';
 import { authAPI } from './utils/auth';
 import { API_BASE_URL } from './utils/api';
 import { register as registerSW, setupInstallPrompt } from './serviceWorkerRegistration';
@@ -280,12 +281,22 @@ function App() {
 
   // Show login page if not authenticated
   if (!user) {
-    return <LoginPage />;
+    return (
+      <>
+        <LoginPage />
+        <CookieBanner />
+      </>
+    );
   }
 
   // Render gallery page
   if (currentPage === 'gallery') {
-    return <ProblemsGallery onBack={goToUpload} onAskAI={handleAskAI} />;
+    return (
+      <>
+        <ProblemsGallery onBack={goToUpload} onAskAI={handleAskAI} />
+        <CookieBanner />
+      </>
+    );
   }
 
   // Render upload page
@@ -302,7 +313,7 @@ function App() {
           </div>
           <nav className="header-actions" aria-label="Main navigation">
             <div className="user-info">
-              {user.avatar && <img src={user.avatar} alt={`${user.name}'s profile picture`} className="user-avatar" />}
+              {user.avatar && <img src={user.avatar} alt={`${user.name}'s profile`} className="user-avatar" />}
               <span className="user-name">{user.name}</span>
             </div>
             <button onClick={goToGallery} className="gallery-btn">
@@ -490,6 +501,7 @@ function App() {
           </section>
         )}
       </main>
+      <CookieBanner />
     </div>
   );
 }

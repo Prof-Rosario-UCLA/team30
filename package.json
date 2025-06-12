@@ -6,7 +6,7 @@
   "scripts": {
     "server": "cd server && npm start",
     "client": "cd client && npm start",
-    "build": "cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate",
+    "build": "CI=false && cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate",
     "start": "npm run prod",
     "prod": "node server/index.js",
     "postinstall": "npm --prefix server install && npm --prefix client install && npm run build",

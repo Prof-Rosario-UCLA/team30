@@ -4,14 +4,14 @@ env_variables:
   NODE_ENV: production
   PORT: 8080
   CLIENT_URL: https://finalproject-462406.uc.r.appspot.com
-  DATABASE_URL: postgresql://postgres:eduhelperpass@localhost/eduhelperdb?host=/cloudsql/finalproject-462406:us-central1:eduhelperdb
-  GEMINI_API_KEY: AIzaSyA0VDLecnUzqK_xYQi-Zu94ProrvQEMwAg
-  GOOGLE_CLIENT_ID: 148267210478-cg0q7a2qeqk08jhlsghiob7ac6u1jd29.apps.googleusercontent.com
-  GOOGLE_CLIENT_SECRET: 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
-  SESSION_SECRET: cs144projecteduhelpniofqwnonoivddfijzd
+  DATABASE_URL: postgresql://[USERNAME]:[PASSWORD]@localhost/[DB_NAME]?host=/cloudsql/[PROJECT_ID]:[ZONE]:[DB_NAME]
+  GEMINI_API_KEY: api_key_here
+  GOOGLE_CLIENT_ID: client_id_here
+  GOOGLE_CLIENT_SECRET: client_secret_here
+  SESSION_SECRET: session_secret_here
 
 beta_settings:
-  cloud_sql_instances: finalproject-462406:us-central1:eduhelperdb
+  cloud_sql_instances: [PROJECT_ID]:[ZONE]:[DB_NAME]
 
 automatic_scaling:
   min_instances: 0

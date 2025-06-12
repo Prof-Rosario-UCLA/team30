@@ -11,49 +11,31 @@ A web application that helps students understand practice problems by analyzing 
 
 ## Setup Instructions
 
-### 1. Get a Gemini API Key
+### 1. Setup Keys/Secrets
 
-1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create a new API key
-3. Copy the API key for the next step
+First, obtain a Gemini API key and create a Google App Engine instance. Be sure to enable CloudSQL Admin and App Engine Admin on whichever user/IAM you use for this.
 
-### 2. Configure the Backend
+Once you have these, place them into app.yaml in lieu of the placeholders that are currently there.
 
-1. Navigate to the `server` directory
-2. Create a `.env` file:
-   ```
-   GEMINI_API_KEY=your_api_key_here
-   ```
-3. Replace `your_api_key_here` with your actual Gemini API key
+### 2. Set up a CloudSQL database
 
-### 3. Install Dependencies
+Within Google Cloud, setup a new CloudSQL instance and then a database. Be sure to keep track of the username and password of this instance.
 
-From the root directory:
-```bash
-# Install root dependencies
-npm install
+Once you have created this instance, place the username, password, instance ID, and project name in the appropriate places in the DATABASE_URL variable of app.yaml.
 
-# Install server dependencies
-cd server
-npm install
+### 3. Deploy to Google App Engine
 
-# Install client dependencies
-cd ../client
-npm install
-```
+If you have not yet installed the gcloud cli, do that now. Then, authenticate yourself and set the project ID to the project you are working on (You should have had to create this when creating the App Engine or CloudSQL instance). 
 
-### 4. Run the Application
+Then, run:
+```gcloud app deploy app.yaml```
+from the main directory of this repo.
 
-From the root directory:
-```bash
-npm start
-```
-
-This will start both the backend server (port 3001) and the React frontend (port 3000).
+Congrats! You should have deployed this web app to your instance.
 
 ## Usage
 
-1. Open your browser to `http://localhost:3000`
+1. Open your browser to the URL it was deployed to.
 2. Click "Choose Image" to upload a screenshot of your problem
 3. Optionally, add a specific question about the problem
 4. Click "Get Help" to analyze the problem
@@ -78,10 +60,26 @@ This will start both the backend server (port 3001) and the React frontend (port
 
 ## API Endpoints
 
-### POST `/api/analyze-problem`
-- **Purpose**: Analyze uploaded problem images
-- **Body**: FormData with `image` file and optional `question` text
-- **Response**: JSON with `analysis` text and `originalQuestion`
+Non-GET requests require a CSRF token (fetch from `/api/csrf-token`).  
+Endpoints tagged **(auth)** need a logged-in user. 
+
+### Auth (should not be used by a person)
+- `GET /auth/google` start OAuth  
+- `GET /auth/google/callback` OAuth return  
+- `GET /auth/user` **(auth)** current session  
+- `POST /auth/logout` **(auth, CSRF)**
+
+### Core
+- `POST /api/analyze-problem` **(auth, CSRF)** – multipart `image` + `question`, uploads the question and calls the Gemini API. Returns the response  
+- `GET  /api/problems?mine=true` – Lists all current questions in the database (can optionally set mine=true to only get problems you uploaded)
+- `GET  /api/problems/:id` – Load only a single problem (you need to know the ID)  
+- `PUT  /api/problems/:id/rating` **(auth, CSRF)** `{ rating: thumbs_up | thumbs_down }`
+
+### Misc
+- `GET /api/subjects` – list of subjects 
+- `GET /api/csrf-token` – `{ csrfToken }`  
+- `GET /api/cache/stats` / `POST /api/cache/clear` **(CSRF)**  
+- `GET /api/security-info`, `GET /api/test-db`
 
 ## Technologies Used
 
